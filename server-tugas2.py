@@ -24,19 +24,16 @@ class ProcessTheClient(threading.Thread):
                         message = data.decode('utf-8').strip()
                         logging.info(f"Received from {self.address}: {message}")
 
-                        split_message = message.split()
-
-                        if len(split_message) < 3:
-                            continue
-
-                        if (split_message[0] == "TIME" and split_message[-2] == "13" and split_message[-1] == "10") or (split_message[0] == "QUIT" and split_message[-2] == "13" and split_message[-1] == "10"):
+                        if message.rstrip('\r\n') == "TIME":
                             tz = timezone(timedelta(hours=7))
                             curr_time = datetime.now(tz).strftime("%d %m %Y %H:%M:%S")
-                            response = f"JAM {curr_time} 13 10\r\n"
+                            response = f"JAM {curr_time}\r\n"
                             self.connection.sendall(response.encode('utf-8'))
 
-                        else:
-                            continue
+                        elif message.rstrip('\r\n') == "QUIT":
+                            logging.info(f"Client {self.address} disconnected")
+                            self.connection.close()
+                            break
 
                 self.connection.close()
 
