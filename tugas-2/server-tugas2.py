@@ -17,7 +17,7 @@ class ProcessTheClient(threading.Thread):
 
         def run(self):
                 while True:
-                        data = self.connection.recv(128)
+                        data = self.connection.recv(32)
                         if not data:
                             break
 
