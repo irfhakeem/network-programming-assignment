@@ -26,8 +26,8 @@ def ProcessTheClient(connection):
             buff = data.decode().split()[2]
 
             while True:
-                # Increased buffer size menjadi 20MB dari 32 Bytes
-                data = connection.recv(200 * 1024 * 1024)
+                # Increased buffer size menjadi 10MB dari 32 Bytes
+                data = connection.recv(10 * 1024 * 1024)
                 if data:
                     buff += data.decode()
                     if "\r\n" in buff:

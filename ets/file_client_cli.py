@@ -15,14 +15,14 @@ def send_command(command_str=""):
     sock.connect(server_address)
     logging.warning(f"connecting to {server_address}")
     try:
-        logging.warning(f"sending message ")
+        logging.warning(f"sending message")
         sock.sendall(command_str.encode())
         # Look for the response, waiting until socket is done (no more data)
         data_received="" #empty string
         while True:
             #socket does not receive all data at once, data comes in part, need to be concatenated at the end of process
-            # Increase buffer size menjadi 100KB dari 16 Bytes
-            data = sock.recv(102400) #102400 bytes = 100KB
+            # Increase buffer size menjadi 10MB dari 16 Bytes
+            data = sock.recv(10 * 1024 * 1024)
             if data:
                 #data is not empty, concat with previous content
                 data_received += data.decode()
@@ -68,17 +68,18 @@ def remote_get(filename=""):
         return False
 
 # New Protocol
-def remote_upload(filename=""):
-    file_path = os.path.join(os.getcwd(), 'files', filename)
+def remote_upload(filename="", newfilename=""):
+    files_dir = os.path.join(os.getcwd(), 'files', filename)
 
-    if not os.path.exists(file_path):
-        print(f"{filename} tidak ditemukan")
+    if not os.path.exists(files_dir):
+        print(f"File tidak ditemukan: {filename}")
         return False
 
-    with open(file_path, 'rb') as f:
-        buff = base64.b64encode(f.read()).decode()
+    with open(files_dir, 'rb') as file:
+        isifile = file.read()
+        buff = base64.b64encode(isifile).decode('utf-8')
 
-    command_str = f"UPLOAD {filename} {buff}\r\n"
+    command_str = f"UPLOAD {newfilename} {buff}\r\n"
     hasil = send_command(command_str)
     if hasil and hasil['status'] == 'OK':
         return True
@@ -115,44 +116,48 @@ def remote_download(filename="", newfilename=""):
         return False
 
 # Worker
-def upload_worker(filename):
+def upload_worker(parameters):
+    filename, new_filename = parameters
     start = time.time()
-    success = remote_upload(filename)
+    try:
+        success = remote_upload(filename, new_filename)
+        size = os.path.getsize(os.path.join(os.getcwd(), 'files', filename)) if success else 0
+    except Exception as e:
+        logging.warning(f"Upload error: {e}")
+        success = False
+        size = 0
     end = time.time()
-    size = os.path.getsize(os.path.join(os.getcwd(), 'files', filename))
-    return {
-        "duration": end - start,
-        "size": size,
-        "success": success
-    }
+    return {"duration": end - start, "size": size, "success": success}
 
 def download_worker(parameters):
     filename, new_filename = parameters
     start = time.time()
-    success = remote_download(filename, new_filename)
+    try:
+        success = remote_download(filename, new_filename)
+        size = os.path.getsize(os.path.join(os.getcwd(), 'files', new_filename)) if success else 0
+    except Exception as e:
+        logging.warning(f"Download error: {e}")
+        success = False
+        size = 0
     end = time.time()
-    size = os.path.getsize(os.path.join(os.getcwd(), 'files', new_filename)) if success else 0
-    return {
-        "duration": end - start,
-        "size": size,
-        "success": success
-    }
+    return {"duration": end - start, "size": size, "success": success}
 
 # Eksekusi tes
 def stress_test(operation, file_size, num_clients):
     results = []
 
     if operation == "upload":
-        filenames = [f"download_{file_size}mb.txt" for _ in range(num_clients)]
+        filenames = [f"{file_size}MB.txt" for _ in range(num_clients)]
+        parameters = [(filename, f"upload_{file_size}MB.txt") for filename in filenames]
         pool = multiprocessing.Pool(processes=num_clients)
-        results = pool.map(upload_worker, filenames)
+        results = pool.map(upload_worker, parameters)
         pool.close()
         pool.join()
 
     else:
         pool = multiprocessing.Pool(processes=num_clients)
-        filenames = [f"{file_size}mb.txt" for _ in range(num_clients)]
-        parameters = [(filename, f"download_{file_size}mb.txt") for filename in filenames]
+        filenames = [f"upload_{file_size}MB.txt" for _ in range(num_clients)]
+        parameters = [(filename, f"download_{file_size}MB.txt") for filename in filenames]
         results = pool.map(download_worker, parameters)
         pool.close()
         pool.join()
@@ -162,8 +167,7 @@ def save_results(operation, file_size, num_clients, num_servers, results):
     csv_dir = os.path.join(os.getcwd(), 'log_ets_progjar.csv')
 
     if not os.path.exists(csv_dir):
-        df = pd.DataFrame(columns=['operation', 'file_size', 'num_clients', 'num_servers',
-                                   'total_time', 'total_bytes', 'throughput', 'success', 'fail'])
+        df = pd.DataFrame(columns=['operation', 'file_size', 'num_clients','num_servers',                                 'total_time', 'total_bytes', 'throughput', 'success', 'fail'])
     else:
         df = pd.read_csv(csv_dir)
 
@@ -192,10 +196,10 @@ def save_results(operation, file_size, num_clients, num_servers, results):
 if __name__ == "__main__":
     server_address=('172.16.16.101',7777)
 
-    operations = ['download', 'upload']
-    file_sizes = [10, 50, 100]
-    client_workers = [1, 5, 50]
-    server_workers = 50
+    operations = ['upload', 'download']
+    file_sizes = [10, 50, 100] #10 50 100
+    client_workers = [1, 5, 50] #1 5 50
+    server_workers = 1
 
     for op in operations:
         for size in file_sizes:
